@@ -4,6 +4,7 @@
 #include "common/rowid.h"
 #include "record/row.h"
 #include "transaction/transaction.h"
+#include "page/table_page.h"
 
 class TableHeap;
 
@@ -11,6 +12,8 @@ class TableIterator {
 public:
   // you may define your own constructor based on your member variables
   explicit TableIterator();
+
+  explicit TableIterator(RowId* rid, TableHeap* th, Transaction* txn);
 
   explicit TableIterator(const TableIterator &other);
 
@@ -32,6 +35,10 @@ public:
 
 private:
   // add your own private member variables here
+  Row *row_;
+  TableHeap *heap_;
+  TablePage *page_;
+  Transaction *txn_;
 };
 
 #endif  // MINISQL_TABLE_ITERATOR_H
