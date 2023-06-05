@@ -63,23 +63,27 @@ bool TableHeap::UpdateTuple(const Row &row, const RowId &rid, Transaction *txn) 
   Row old_row=Row(rid);
   page->WLatch();
   int type=page->UpdateTuple(row, &old_row, schema_, txn, lock_manager_, log_manager_);
-  bool ret=false;
   switch(type){
     case 0: //success
-      ret=true;
-      break;
+      page->WUnlatch();
+      buffer_pool_manager_->UnpinPage(page->GetTablePageId(), true);
+      return true;
     case 1: //slot number is invalid
-      break;
+      page->WUnlatch();
+      buffer_pool_manager_->UnpinPage(page->GetTablePageId(), false);
+      return false;
     case 2: //tuple is deleted
-      break;
+      page->WUnlatch();
+      buffer_pool_manager_->UnpinPage(page->GetTablePageId(), false);
+      return false;
     case 3: //not enough space
-      ApplyDelete(rid, txn);
+      page->ApplyDelete(rid, txn, log_manager_);
+      page->WUnlatch();
+      buffer_pool_manager_->UnpinPage(page->GetTablePageId(), true);
       Row new_row=Row(row); //create another non-const row
-      if(InsertTuple(new_row, txn)) ret=true;
+      if(InsertTuple(new_row, txn)) return true;
+      else return false;
   }
-  page->WUnlatch();
-  buffer_pool_manager_->UnpinPage(page->GetTablePageId(), true);
-  return ret;
 }
 
 /**
