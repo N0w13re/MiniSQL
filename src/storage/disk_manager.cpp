@@ -90,7 +90,7 @@ void DiskManager::DeAllocatePage(page_id_t logical_page_id) {
 bool DiskManager::IsPageFree(page_id_t logical_page_id) {
   uint32_t i=logical_page_id / BITMAP_SIZE; //number of extent
   char page_data[PAGE_SIZE];
-  ReadPage(i, page_data); //read bitmap
+  ReadPhysicalPage(i*(BITMAP_SIZE+1)+1, page_data); //read bitmap
   BitmapPage<PAGE_SIZE> *bit_map = reinterpret_cast<BitmapPage<PAGE_SIZE> *>(page_data);
   return bit_map->IsPageFree(logical_page_id % BITMAP_SIZE);
   //no need to write back because there is no update

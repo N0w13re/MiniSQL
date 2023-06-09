@@ -6,6 +6,9 @@
 #include "utils/tree_file_mgr.h"
 #include "utils/utils.h"
 
+#include<iostream>
+using namespace std;
+
 static const std::string db_name = "bp_tree_insert_test.db";
 
 TEST(BPlusTreeTests, SampleTest) {
@@ -19,7 +22,7 @@ TEST(BPlusTreeTests, SampleTest) {
   BPlusTree tree(0, engine.bpm_, KP);
   TreeFileManagers mgr("tree_");
   // Prepare data
-  const int n = 30;
+  const int n = 20000;
   vector<GenericKey *> keys;
   vector<RowId> values;
   vector<GenericKey *> delete_seq;
@@ -41,24 +44,29 @@ TEST(BPlusTreeTests, SampleTest) {
   for (int i = 0; i < n; i++) {
     kv_map[keys[i]] = values[i];
   }
+  cout<<"b1"<<endl;
   // Insert data
   for (int i = 0; i < n; i++) {
     tree.Insert(keys[i], values[i]);
   }
+  cout<<"b2"<<endl;
   ASSERT_TRUE(tree.Check());
   // Print tree
   tree.PrintTree(mgr[0]);
   // Search keys
   vector<RowId> ans;
+  cout<<"b3"<<endl;
   for (int i = 0; i < n; i++) {
     tree.GetValue(keys_copy[i], ans);
     ASSERT_EQ(kv_map[keys_copy[i]], ans[i]);
   }
+  cout<<"b4"<<endl;
   ASSERT_TRUE(tree.Check());
   // Delete half keys
   for (int i = 0; i < n / 2; i++) {
     tree.Remove(delete_seq[i]);
   }
+  cout<<"b5"<<endl;
   tree.PrintTree(mgr[1]);
   // Check valid
   ans.clear();

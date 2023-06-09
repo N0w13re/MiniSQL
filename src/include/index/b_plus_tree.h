@@ -48,7 +48,7 @@ class BPlusTree {
   IndexIterator End();
 
   // expose for test purpose
-  Page *FindLeafPage(const GenericKey *key, page_id_t page_id = INVALID_PAGE_ID, bool leftMost = false);
+  Page *FindLeafPage(const GenericKey *key, page_id_t page_id = INVALID_PAGE_ID, bool leftMost = false, bool rightMost = false);
 
   // used to check whether all pages are unpinned
   bool Check();

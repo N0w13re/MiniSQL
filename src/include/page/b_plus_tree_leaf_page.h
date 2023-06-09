@@ -74,6 +74,8 @@ class BPlusTreeLeafPage : public BPlusTreePage {
 
   void MoveLastToFrontOf(BPlusTreeLeafPage *recipient);
 
+  void MoveAllToFrontOf(BPlusTreeLeafPage *recipient);
+
  private:
   void CopyNFrom(void *src, int size);
 
