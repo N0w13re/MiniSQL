@@ -21,7 +21,7 @@ uint32_t Schema::SerializeTo(char *buf) const {
 
 uint32_t Schema::GetSerializedSize() const {
   // replace with your code here
-  uint32_t offset=4;
+  uint32_t offset=8;
   for(auto& pc: columns_){
     offset += pc->GetSerializedSize();
   }
@@ -38,9 +38,12 @@ uint32_t Schema::DeserializeFrom(char *buf, Schema *&schema) {
   uint32_t cnt=MACH_READ_UINT32(buf+offset); //read count
   offset += 4;
 
-  schema->columns_.reserve(cnt);
-  for(auto& pc: schema->columns_){
-    offset += pc->DeserializeFrom(buf+offset, pc);  //read columns
+  std::vector<Column *> columns;
+  for(uint32_t i=0; i<cnt; i++){
+    Column *col;
+    offset += Column::DeserializeFrom(buf+offset, col);  //read columns
+    columns.push_back(col);
   }
+  schema=new Schema(columns);
   return offset;
 }
