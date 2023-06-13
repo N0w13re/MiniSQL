@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <algorithm>
 
 #include "executor/execute_context.h"
 #include "executor/executors/abstract_executor.h"
@@ -38,4 +39,8 @@ class IndexScanExecutor : public AbstractExecutor {
 
   /** The sequential scan plan node to be executed */
   const IndexScanPlanNode *plan_;
+  TableInfo *table_info_;
+  // std::vector<IndexInfo *> table_indexes_;
+  std::vector<Row> rows_;
+  std::vector<Row>::iterator iter_;
 };

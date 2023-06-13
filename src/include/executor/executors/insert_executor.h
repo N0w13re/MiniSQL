@@ -36,7 +36,7 @@ class InsertExecutor : public AbstractExecutor {
    *
    * NOTE: InsertExecutor::Next() does not use the `rid` out-parameter.
    */
-  bool Next([[maybe_unused]] Row *row, RowId *rid) override;
+  bool Next(Row *row, RowId *rid) override;
 
   /** @return The output schema for the insert */
   const Schema *GetOutputSchema() const override { return plan_->OutputSchema(); }
@@ -45,6 +45,8 @@ class InsertExecutor : public AbstractExecutor {
   /** The insert plan node to be executed*/
   const InsertPlanNode *plan_;
   std::unique_ptr<AbstractExecutor> child_executor_;
+  TableInfo *table_info_;
+  std::vector<IndexInfo *> indexes_;
 };
 
 #endif  // MINISQL_INSERT_EXECUTOR_H

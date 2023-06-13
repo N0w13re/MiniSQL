@@ -44,6 +44,9 @@ class TableMetadata {
   std::string table_name_;
   page_id_t root_page_id_;
   Schema *schema_;
+ 
+ public:
+  vector<string> uni_columns_, pri_columns_;
 };
 
 /**
@@ -76,7 +79,7 @@ class TableInfo {
  private:
   explicit TableInfo(){};
 
- private:
+ public:  //in order to modiry table_meta via table_info
   TableMetadata *table_meta_;
   TableHeap *table_heap_;
 };

@@ -115,11 +115,12 @@ bool BPlusTree::InsertIntoLeaf(GenericKey *key, const RowId &value, Transaction 
   Page *page=FindLeafPage(key);
   auto *leaf_page=reinterpret_cast<LeafPage *>(page->GetData());
   RowId rid;
-  if(leaf_page->Lookup(key, rid ,processor_)){ //duplicate
-    buffer_pool_manager_->UnpinPage(page->GetPageId(), page->IsDirty());  //FindLeafPage() fetch it
+  int old_size=leaf_page->GetSize();
+  int size=leaf_page->Insert(key, value, processor_);
+  if(size==old_size){
+    buffer_pool_manager_->UnpinPage(leaf_page->GetPageId(), page->IsDirty());
     return false;
   }
-  int size=leaf_page->Insert(key, value, processor_);
   if(size>leaf_max_size_){
     auto new_node=Split(leaf_page, transaction);
     new_node->SetNextPageId(leaf_page->GetNextPageId());  //update next_page_id of new leaf
@@ -209,7 +210,12 @@ void BPlusTree::Remove(const GenericKey *key, Transaction *transaction) {
   Page *page=FindLeafPage(key); //page was fetched in it
   ASSERT(page!=nullptr, "Not found!");
   auto leaf_page=reinterpret_cast<LeafPage *>(page->GetData());
-  leaf_page->RemoveAndDeleteRecord(key, processor_);
+  auto old_size=leaf_page->GetSize();
+  auto size=leaf_page->RemoveAndDeleteRecord(key, processor_);
+  if(old_size==size){ //not found
+    buffer_pool_manager_->UnpinPage(leaf_page->GetPageId(), false);
+    return;
+  }
   if(CoalesceOrRedistribute(leaf_page, transaction)){ //should be deleted
     buffer_pool_manager_->UnpinPage(page->GetPageId(), true);
     buffer_pool_manager_->DeletePage(page->GetPageId());
@@ -227,7 +233,7 @@ void BPlusTree::Remove(const GenericKey *key, Transaction *transaction) {
 template <typename N>
 bool BPlusTree::CoalesceOrRedistribute(N *&node, Transaction *transaction) {
   if(node->IsRootPage()) return AdjustRoot(node);
-  else if(node->GetSize()>=node->GetMinSize()) return false; //no need to coalesce or redistribute
+  if(node->GetSize()>=node->GetMinSize()) return false; //no need to coalesce or redistribute
   auto page=buffer_pool_manager_->FetchPage(node->GetParentPageId());
   auto parent_page=reinterpret_cast<InternalPage *>(page->GetData());
   int node_index=parent_page->ValueIndex(node->GetPageId()), sibling_index;
@@ -269,45 +275,27 @@ bool BPlusTree::CoalesceOrRedistribute(N *&node, Transaction *transaction) {
  */
 bool BPlusTree::Coalesce(LeafPage *&neighbor_node, LeafPage *&node, InternalPage *&parent, int index,
                          Transaction *transaction) {
-  if(index==0){ //node is the first child of parent
-    auto page=FindLeafPage(nullptr, -1, true, false);  //leftmost leaf
-    if(page->GetPageId()!=node->GetPageId()){ //node is not the leftmost leaf
-      auto leaf_page=reinterpret_cast<LeafPage *>(page->GetData());
-      while(1){ 
-        if(leaf_page->GetNextPageId()==node->GetPageId()){
-          leaf_page->SetNextPageId(neighbor_node->GetPageId()); //change next_page_id of leaf before node
-          break;
-        }
-        auto next_id=leaf_page->GetNextPageId();
-        buffer_pool_manager_->UnpinPage(page->GetPageId(), page->IsDirty());
-        page=buffer_pool_manager_->FetchPage(next_id);
-        leaf_page=reinterpret_cast<LeafPage *>(page->GetData());
-      }
-    }
-    buffer_pool_manager_->UnpinPage(page->GetPageId(), true); //FindLeafPage fetched it
-    node->MoveAllToFrontOf(neighbor_node);
-    parent->SetKeyAt(1, parent->KeyAt(0));  //persist dummy key
+  if(index==0){
+    index=1;
+    swap(neighbor_node, node);
   }
-  else{ //node is not the first child of parent
-    neighbor_node->SetNextPageId(node->GetNextPageId());
-    node->MoveAllTo(neighbor_node);
-    //dummy key of parent?
-  }
+  node->MoveAllTo(neighbor_node);
   parent->Remove(index);
+  buffer_pool_manager_->UnpinPage(node->GetPageId(), true);
+  buffer_pool_manager_->DeletePage(node->GetPageId());
   return CoalesceOrRedistribute(parent, transaction);
 }
 
 bool BPlusTree::Coalesce(InternalPage *&neighbor_node, InternalPage *&node, InternalPage *&parent, int index,
                          Transaction *transaction) {
-  if(index==0){  //node is the first child of parent
-    node->MoveAllToFrontOf(neighbor_node, parent->KeyAt(1), buffer_pool_manager_);
-    parent->SetKeyAt(1, parent->KeyAt(0));  //persist dummy key
+  if(index==0){
+    index=1;
+    swap(neighbor_node, node);
   }
-  else{
-    node->MoveAllTo(neighbor_node, parent->KeyAt(index), buffer_pool_manager_);
-    //dummy?
-  }
+  node->MoveAllTo(neighbor_node, parent->KeyAt(index), buffer_pool_manager_);
   parent->Remove(index);
+  buffer_pool_manager_->UnpinPage(node->GetPageId(), true);
+  buffer_pool_manager_->DeletePage(node->GetPageId());
   return CoalesceOrRedistribute(parent, transaction);
 }
 
@@ -338,13 +326,11 @@ void BPlusTree::Redistribute(InternalPage *neighbor_node, InternalPage *node, in
   auto page=buffer_pool_manager_->FetchPage(neighbor_node->GetParentPageId());
   auto parent_page=reinterpret_cast<InternalPage *>(page->GetData());
   if(index==0){ //node is the first child
-    GenericKey *middle_key=neighbor_node->KeyAt(0);
-    neighbor_node->MoveFirstToEndOf(node, middle_key, buffer_pool_manager_);
+    neighbor_node->MoveFirstToEndOf(node, parent_page->KeyAt(1), buffer_pool_manager_);
     parent_page->SetKeyAt(1, neighbor_node->KeyAt(0));  //update
   }
   else{
-    GenericKey *middle_key=node->KeyAt(node->GetSize()-1);
-    node->MoveLastToFrontOf(neighbor_node, middle_key, buffer_pool_manager_);
+    neighbor_node->MoveFirstToEndOf(node, parent_page->KeyAt(index), buffer_pool_manager_);
     parent_page->SetKeyAt(index, node->KeyAt(0));
   }
   buffer_pool_manager_->UnpinPage(parent_page->GetPageId(), true);

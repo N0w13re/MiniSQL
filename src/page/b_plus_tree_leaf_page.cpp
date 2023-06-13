@@ -115,6 +115,13 @@ std::pair<GenericKey *, RowId> LeafPage::GetItem(int index) {
  */
 int LeafPage::Insert(GenericKey *key, const RowId &value, const KeyManager &KM) {
   int index=KeyIndex(key, KM);  //key(index) is the first key that >=key
+  if(index==GetSize()){ //append on the tail
+    SetKeyAt(index, key);
+    SetValueAt(index, value);
+    IncreaseSize(1);
+    return GetSize();
+  }
+  if(KM.CompareKeys(KeyAt(index), key)==0) return GetSize();  //duplicate
   for(int i=GetSize(); i>index; i--){
     SetKeyAt(i, KeyAt(i-1));
     SetValueAt(i, ValueAt(i-1));
@@ -132,8 +139,8 @@ int LeafPage::Insert(GenericKey *key, const RowId &value, const KeyManager &KM) 
  * Remove half of key & value pairs from this page to "recipient" page
  */
 void LeafPage::MoveHalfTo(LeafPage *recipient) {
-  int size=GetSize(), moved_size=GetMinSize();
-  recipient->CopyNFrom(this->PairPtrAt(size-moved_size), moved_size);
+  int moved_size=GetSize()-GetMinSize();
+  recipient->CopyNFrom(this->PairPtrAt(GetMinSize()), moved_size);
   IncreaseSize(-moved_size);
 }
 
@@ -177,7 +184,7 @@ int LeafPage::RemoveAndDeleteRecord(const GenericKey *key, const KeyManager &KM)
   for(index=0; index<size; index++){
     if(KM.CompareKeys(KeyAt(index), key)==0) break;
   }
-  if(index==size) return -1;  //not found
+  if(index==size) return GetSize();  //not found
   for(int i=index; i<size-1; i++){
     SetKeyAt(i, KeyAt(i+1));
     SetValueAt(i, ValueAt(i+1));

@@ -121,8 +121,8 @@ int InternalPage::InsertNodeAfter(const page_id_t &old_value, GenericKey *new_ke
  * buffer_pool_manager 是干嘛的？传给CopyNFrom()用于Fetch数据页
  */
 void InternalPage::MoveHalfTo(InternalPage *recipient, BufferPoolManager *buffer_pool_manager) {
-  int size=GetSize(), moved_size=GetMinSize();
-  recipient->CopyNFrom(this->PairPtrAt(size-moved_size), moved_size, buffer_pool_manager);
+  int moved_size=GetSize()-GetMinSize();
+  recipient->CopyNFrom(this->PairPtrAt(GetMinSize()), moved_size, buffer_pool_manager);
   IncreaseSize(-moved_size);
 }
 

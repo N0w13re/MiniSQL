@@ -10,11 +10,13 @@ TableIterator::TableIterator() {}
 
 TableIterator::TableIterator(RowId* rid, TableHeap* th, Transaction* txn) {
   row_=new Row(*rid);
-  page_=reinterpret_cast<TablePage *>(th->buffer_pool_manager_->FetchPage(rid->GetPageId()));
-  heap_=th;
-  txn_=txn;
-  th->GetTuple(row_, txn);
-  th->buffer_pool_manager_->UnpinPage(rid->GetPageId(), false);
+  if(rid->GetPageId()!=INVALID_PAGE_ID){
+    page_=reinterpret_cast<TablePage *>(th->buffer_pool_manager_->FetchPage(rid->GetPageId()));
+    heap_=th;
+    txn_=txn;
+    th->GetTuple(row_, txn);
+    th->buffer_pool_manager_->UnpinPage(rid->GetPageId(), false);
+  }
 }
 
 TableIterator::TableIterator(const TableIterator &other) {
@@ -60,14 +62,14 @@ TableIterator &TableIterator::operator++() {
   }
   else{ //go to next page
     auto next_pid=page_->GetNextPageId();
-    if(next_pid==INVALID_PAGE_ID) row_=nullptr;  //no more pages
+    if(next_pid==INVALID_PAGE_ID) row_->SetRowId(RowId());  //no more pages
     else{
       page_=reinterpret_cast<TablePage *>(heap_->buffer_pool_manager_->FetchPage(next_pid));
       if(page_->GetFirstTupleRid(next_rid)){  //first_rid exists
         row_=new Row(*next_rid);
         heap_->GetTuple(row_, txn_);
       }
-      else row_=nullptr; //first_rid not exists
+      else row_->SetRowId(RowId()); //first_rid not exists
       heap_->buffer_pool_manager_->UnpinPage(page_->GetPageId(), true);
     }
   }

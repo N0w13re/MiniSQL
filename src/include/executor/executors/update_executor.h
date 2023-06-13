@@ -38,7 +38,7 @@ class UpdateExecutor : public AbstractExecutor {
    * NOTE: UpdateExecutor::Next() does not use the `row` out-parameter.
    * NOTE: UpdateExecutor::Next() does not use the `rid` out-parameter.
    */
-  bool Next([[maybe_unused]] Row *row, RowId *rid) override;
+  bool Next(Row *row, RowId *rid) override;
 
   /** @return The output schema for the update */
   const Schema *GetOutputSchema() const override { return plan_->OutputSchema(); }
@@ -57,6 +57,8 @@ class UpdateExecutor : public AbstractExecutor {
   std::vector<IndexInfo *> index_info_;
   /** The child executor to obtain value from */
   std::unique_ptr<AbstractExecutor> child_executor_;
+  TableInfo *table_info_;
+  std::vector<IndexInfo *> indexes_;
 };
 
 #endif  // MINISQL_UPDATE_EXECUTOR_H

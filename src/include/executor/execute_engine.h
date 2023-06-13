@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <algorithm>
 
 #include "common/dberr.h"
 #include "common/instance.h"
