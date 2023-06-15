@@ -1,3 +1,9 @@
+extern "C" {
+int yyparse(void);
+#include "parser/minisql_lex.h"
+#include "parser/parser.h"
+}
+
 #include "executor/execute_engine.h"
 
 #include <dirent.h>
@@ -504,7 +510,50 @@ dberr_t ExecuteEngine::ExecuteExecfile(pSyntaxNode ast, ExecuteContext *context)
 #ifdef ENABLE_EXECUTE_DEBUG
   LOG(INFO) << "ExecuteExecfile" << std::endl;
 #endif
-  return DB_FAILED;
+  char *file=ast->child_->val_;
+  ifstream in(file);
+  if(!in.is_open()){
+    cout<<"Fail to open "<<file<<"!"<<endl;
+    return DB_FAILED;
+  }
+  char c;
+  int i=0;
+  char line[1000];
+  while((c=in.get())!=EOF){
+    if(c!=';') line[i++]=c;
+    else{  //end of line
+      line[i++]=';';
+      line[i]=0;
+      in.get(); //LF
+      i=0;  //clear
+      cout<<line<<endl;
+      YY_BUFFER_STATE bp = yy_scan_string(line);
+      if (bp == nullptr) {
+        LOG(ERROR) << "Failed to create yy buffer state." << std::endl;
+        exit(1);
+      }
+      yy_switch_to_buffer(bp);
+      // init parser module
+      MinisqlParserInit();
+      // parse
+      yyparse();
+      // parse result handle
+      if (MinisqlParserGetError()) {
+        // error
+        printf("%s\n", MinisqlParserGetErrorMessage());
+        return DB_FAILED;
+      }
+      auto result = Execute(MinisqlGetParserRootNode());
+      // clean memory after parse
+      MinisqlParserFinish();
+      yy_delete_buffer(bp);
+      yylex_destroy();
+      // quit condition
+      ExecuteInformation(result);
+      if(result!=DB_SUCCESS) return result;
+    }
+  }
+  return DB_SUCCESS;
 }
 
 /**
@@ -514,5 +563,5 @@ dberr_t ExecuteEngine::ExecuteQuit(pSyntaxNode ast, ExecuteContext *context) {
 #ifdef ENABLE_EXECUTE_DEBUG
   LOG(INFO) << "ExecuteQuit" << std::endl;
 #endif
- return DB_FAILED;
+  return DB_QUIT;
 }

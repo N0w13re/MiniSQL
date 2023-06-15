@@ -24,14 +24,7 @@ bool SeqScanExecutor::Next(Row *row, RowId *rid) {
       if(table_iter_==end_iter_) return false;
       *row=*table_iter_;
       *rid=row->GetRowId();
-      auto schema=plan_->OutputSchema();
-      std::vector<Field> fields;
-      uint32_t idx;
-      for(auto &col: schema->GetColumns()){
-        schema->GetColumnIndex(col->GetName(),idx);
-        fields.emplace_back(*row->GetField(idx));
-      }
-      *row=Row{fields};
+      row->GetKeyFromRow(table_info_->GetSchema(), plan_->OutputSchema(), *row);
       row->SetRowId(*rid);
       table_iter_++;
       if(plan_->GetPredicate()->Evaluate(row).CompareEquals(Field(kTypeInt, 1))) break;
@@ -42,14 +35,7 @@ bool SeqScanExecutor::Next(Row *row, RowId *rid) {
     if(table_iter_==end_iter_) return false;
     *row=*table_iter_;
     *rid=row->GetRowId();
-    auto schema=plan_->OutputSchema();
-    std::vector<Field> fields;
-    uint32_t idx;
-    for(auto &col: schema->GetColumns()){
-      schema->GetColumnIndex(col->GetName(),idx);
-      fields.emplace_back(*row->GetField(idx));
-    }
-    *row=Row{fields};
+    row->GetKeyFromRow(table_info_->GetSchema(), plan_->OutputSchema(), *row);
     row->SetRowId(*rid);
     table_iter_++;
     return true;
