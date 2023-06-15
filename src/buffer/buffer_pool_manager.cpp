@@ -67,6 +67,13 @@ Page *BufferPoolManager::FetchPage(page_id_t page_id) {
  * TODO: Student Implement
  */
 Page *BufferPoolManager::NewPage(page_id_t &page_id) {
+  // 1.   If all the pages in the buffer pool are pinned, return nullptr.
+  size_t i=0;
+  while(i<pool_size_){
+    if(pages_[i].pin_count_==0) break;
+    i++;
+  }
+  if(i==pool_size_) return nullptr;
   // 2.   Pick a victim page P from either the free list or the replacer. Always pick from the free list first.
   frame_id_t frame_id;
   if(!free_list_.empty()){
@@ -81,7 +88,6 @@ Page *BufferPoolManager::NewPage(page_id_t &page_id) {
     }
     page_table_.erase(p.GetPageId());
   }
-  // 1.   If all the pages in the buffer pool are pinned, return nullptr.
   else return nullptr;
   // 0.   Make sure you call AllocatePage!
   page_id=AllocatePage();
@@ -100,8 +106,6 @@ Page *BufferPoolManager::NewPage(page_id_t &page_id) {
  * TODO: Student Implement
  */
 bool BufferPoolManager::DeletePage(page_id_t page_id) {
-  // 0.   Make sure you call DeallocatePage!
-  DeallocatePage(page_id);
   // 1.   Search the page table for the requested page (P).
   // 1.   If P does not exist, return true.
   auto it=page_table_.find(page_id);
@@ -116,6 +120,8 @@ bool BufferPoolManager::DeletePage(page_id_t page_id) {
     p.is_dirty_=false;
   }
   page_table_.erase(p.GetPageId()); 
+  // 0.   Make sure you call DeallocatePage!
+  DeallocatePage(page_id);
   p.page_id_=INVALID_PAGE_ID;  //reset metadata, no need to reset pin_count_ and is_dirty_
   free_list_.push_back(frame_id); //return it to the free list
   replacer_->Pin(frame_id); //remove from replacer
@@ -137,6 +143,7 @@ bool BufferPoolManager::UnpinPage(page_id_t page_id, bool is_dirty) {
   }
   return false;
 }
+
 
 /**
  * TODO: Student Implement

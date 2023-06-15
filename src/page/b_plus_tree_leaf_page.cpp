@@ -227,9 +227,9 @@ void LeafPage::MoveFirstToEndOf(LeafPage *recipient) {
  * Copy the item into the end of my item list. (Append item to my array)
  */
 void LeafPage::CopyLastFrom(GenericKey *key, const RowId value) {
+  IncreaseSize(1);
   SetKeyAt(GetSize()-1, key);
   SetValueAt(GetSize()-1, value);
-  IncreaseSize(1);
 }
 
 /*

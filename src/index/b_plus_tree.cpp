@@ -243,7 +243,7 @@ bool BPlusTree::CoalesceOrRedistribute(N *&node, Transaction *transaction) {
   page=buffer_pool_manager_->FetchPage(parent_page->ValueAt(sibling_index));
   auto sibling_page=reinterpret_cast<N *>(page->GetData());
 
-  if(node->GetSize() + sibling_page->GetSize() <= node->GetMaxSize()){  //merge
+  if(node->GetSize() + sibling_page->GetSize() < node->GetMinSize()){  //merge
     if(Coalesce(sibling_page, node, parent_page, node_index, transaction)){
       buffer_pool_manager_->UnpinPage(parent_page->GetPageId(), true);
       buffer_pool_manager_->DeletePage(parent_page->GetPageId());
