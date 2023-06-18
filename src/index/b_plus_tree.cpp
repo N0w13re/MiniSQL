@@ -18,7 +18,7 @@ BPlusTree::BPlusTree(index_id_t index_id, BufferPoolManager *buffer_pool_manager
       leaf_max_size_(leaf_max_size),
       internal_max_size_(internal_max_size) {
   if (leaf_max_size_==UNDEFINED_SIZE) leaf_max_size_=(PAGE_SIZE-LEAF_PAGE_HEADER_SIZE)/(KM.GetKeySize()+sizeof(RowId)) - 1;
-  if (internal_max_size_==UNDEFINED_SIZE) internal_max_size_=(PAGE_SIZE-INTERNAL_PAGE_HEADER_SIZE)/(KM.GetKeySize()+sizeof(RowId)) - 1;
+  if (internal_max_size_==UNDEFINED_SIZE) internal_max_size_=(PAGE_SIZE-INTERNAL_PAGE_HEADER_SIZE)/(KM.GetKeySize()+sizeof(page_id_t)) - 1;
   auto page=buffer_pool_manager_->FetchPage(INDEX_ROOTS_PAGE_ID);
   auto index_roots_page=reinterpret_cast<IndexRootsPage *>(page->GetData());
   index_roots_page->GetRootId(index_id, &root_page_id_);
