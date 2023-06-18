@@ -293,6 +293,7 @@ dberr_t ExecuteEngine::ExecuteShowDatabases(pSyntaxNode ast, ExecuteContext *con
   for(auto &db: dbs_){
     cout<<db.first<<endl;
   }
+  cout<<"Show databases sucess."<<endl;
   return DB_SUCCESS;
 }
 
@@ -322,11 +323,13 @@ dberr_t ExecuteEngine::ExecuteShowTables(pSyntaxNode ast, ExecuteContext *contex
 #endif
   auto db_eng=dbs_[current_db_];
   vector<TableInfo *> table_infos;
-  if(!db_eng->catalog_mgr_->GetTables(table_infos)) return DB_FAILED;
+  auto res=db_eng->catalog_mgr_->GetTables(table_infos);
+  if(res!=DB_SUCCESS) return res;
   cout<<"There are totol "<<table_infos.size()<<" tables in database "<<current_db_<<":"<<endl;
   for(auto &table_info: table_infos){
     cout<<table_info->GetTableName()<<endl;
   }
+  cout<<"Show tables success."<<endl;
   return DB_SUCCESS;
 }
 
@@ -343,11 +346,11 @@ dberr_t ExecuteEngine::ExecuteCreateTable(pSyntaxNode ast, ExecuteContext *conte
   }
   string table_name(ast->child_->val_), col_name, col_type;
   TypeId type;
-  vector<string> uni_columns, pri_columns;
+  vector<string> uniques, primarys;
   int index=0, length;
   vector<Column *> columns;
   for(auto ptr=ast->child_->next_->child_; ptr!=nullptr; ptr=ptr->next_){
-    if(ptr->type_==kNodeColumnDefinition){
+    if(ptr->val_==nullptr){ //not unique
       col_name=ptr->child_->val_;
       col_type=ptr->child_->next_->val_;
       if(col_type=="int") type=kTypeInt;
@@ -366,29 +369,68 @@ dberr_t ExecuteEngine::ExecuteCreateTable(pSyntaxNode ast, ExecuteContext *conte
         cout<<"Invalid type!"<<endl;
         return DB_FAILED;
       }
-      bool unique=(ptr->val_!=nullptr);
-      if(unique) uni_columns.emplace_back(col_name);
       Column *col_ptr;
-      if(type==kTypeInt || type==kTypeFloat) col_ptr=new Column(col_name, type, index++, false, unique);
-      else col_ptr=new Column(col_name, type, length, index++, unique);
+      if(type==kTypeInt || type==kTypeFloat) col_ptr=new Column(col_name, type, index++, false, false);
+      else col_ptr=new Column(col_name, type, length, index++, false, false);
       columns.emplace_back(col_ptr);
     }
-    else if(ptr->type_==kNodeColumnList){
-      auto pri_ptr=ptr->child_;
-      while(pri_ptr!=nullptr){
-        col_name=pri_ptr->val_;
-        uni_columns.emplace_back(col_name);
-        pri_columns.emplace_back(col_name);
-        pri_ptr=pri_ptr->next_;
+    else if(!strcmp(ptr->val_, "unique")){
+      col_name=ptr->child_->val_;
+      col_type=ptr->child_->next_->val_;
+      if(col_type=="int") type=kTypeInt;
+      else if(col_type=="float") type=kTypeFloat;
+      else if(col_type=="char"){
+        type=kTypeChar;
+        string str(ptr->child_->next_->child_->val_);
+        length=str.length();
+        if(length<=0 || str.find('.')!=-1){
+          cout<<"Invalid char!"<<endl;
+          return DB_FAILED;
+        }
+      }
+      else{
+        type=kTypeInvalid;
+        cout<<"Invalid type!"<<endl;
+        return DB_FAILED;
+      }
+      uniques.emplace_back(col_name);
+      Column *col_ptr;
+      if(type==kTypeInt || type==kTypeFloat) col_ptr=new Column(col_name, type, index++, false, true);
+      else col_ptr=new Column(col_name, type, length, index++, false, true);
+      columns.emplace_back(col_ptr);
+    }
+    else if(!strcmp(ptr->val_, "primary keys")){
+      for(auto pri_ptr=ptr->child_; pri_ptr!=nullptr; pri_ptr=pri_ptr->next_){
+        primarys.emplace_back(pri_ptr->val_);
+      }
+      for(auto& pri_name: primarys){
+        for(auto& col: columns){
+          if(col->GetName()==pri_name){
+            if(primarys.size()==1) col->SetUnique(true);
+            col->SetNullable(false);
+            break;
+          }
+        }
       }
     }
   }
-  auto db_eng=dbs_[current_db_];
+  auto mgr=dbs_[current_db_]->catalog_mgr_;
   auto schema=new Schema(columns);
   TableInfo *table_info=nullptr;
-  if(!db_eng->catalog_mgr_->CreateTable(table_name, schema, context->GetTransaction(), table_info)) return DB_FAILED;
-  table_info->table_meta_->pri_columns_=pri_columns;
-  table_info->table_meta_->uni_columns_=uni_columns;
+  auto res=mgr->CreateTable(table_name, schema, context->GetTransaction(), table_info);
+  if(res!=DB_SUCCESS) return res;
+  table_info->table_meta_->pri_columns_=primarys;
+  table_info->table_meta_->uni_columns_=uniques;
+  for(auto &uni_name: uniques){
+    IndexInfo* index_info=IndexInfo::Create();
+    auto res=mgr->CreateIndex(table_name, "Unique_"+uni_name, {uni_name}, context->GetTransaction(), index_info, "bptree");
+    if(res!=DB_SUCCESS) return res;
+  }
+  if(primarys.size()==1){
+    IndexInfo* index_info=IndexInfo::Create();
+    auto res=mgr->CreateIndex(table_name, "Primary_"+primarys[0], {primarys[0]}, context->GetTransaction(), index_info, "bptree");
+    if(res!=DB_SUCCESS) return res;
+  }
   cout<<"Create table "<<table_name<<" success."<<endl;
   return DB_SUCCESS;
 }
@@ -401,8 +443,9 @@ dberr_t ExecuteEngine::ExecuteDropTable(pSyntaxNode ast, ExecuteContext *context
   LOG(INFO) << "ExecuteDropTable" << std::endl;
 #endif
   string table_name(ast->child_->val_);
-  auto db_eng=dbs_[current_db_];
-  return db_eng->catalog_mgr_->DropTable(table_name);
+  auto res=dbs_[current_db_]->catalog_mgr_->DropTable(table_name);
+  if(res==DB_SUCCESS) cout<<"Drop table"<<table_name<<"success."<<endl;
+  return res;
 }
 
 /**
@@ -412,17 +455,20 @@ dberr_t ExecuteEngine::ExecuteShowIndexes(pSyntaxNode ast, ExecuteContext *conte
 #ifdef ENABLE_EXECUTE_DEBUG
   LOG(INFO) << "ExecuteShowIndexes" << std::endl;
 #endif
-  auto db_eng=dbs_[current_db_];
+  auto mgr=dbs_[current_db_]->catalog_mgr_;
   vector<TableInfo *> table_infos;
-  if(!db_eng->catalog_mgr_->GetTables(table_infos)) return DB_FAILED;
+  auto res=mgr->GetTables(table_infos);
+  if(res!=DB_SUCCESS) return res;
   for(auto& table_info: table_infos){
     string table_name(table_info->GetTableName());
     vector<IndexInfo *> index_infos;
-    if(!db_eng->catalog_mgr_->GetTableIndexes(table_name, index_infos)) return DB_FAILED;
+    auto res=mgr->GetTableIndexes(table_name, index_infos);
+    if(res!=DB_SUCCESS) return res;
     for(auto& index_info: index_infos){
       cout<<index_info->GetIndexName()<<endl;
     }
   }
+  cout<<"Show indexes success."<<endl;
   return DB_SUCCESS;
 }
 
@@ -435,23 +481,15 @@ dberr_t ExecuteEngine::ExecuteCreateIndex(pSyntaxNode ast, ExecuteContext *conte
 #endif
   string index_name(ast->child_->val_);
   string table_name(ast->child_->next_->val_);
-  auto db_eng=dbs_[current_db_];
-  TableInfo *table_info;
-  if(!db_eng->catalog_mgr_->GetTable(table_name, table_info)) return DB_FAILED;
-  auto ptr=ast->child_->next_->next_;
-  if(ptr==nullptr) return DB_FAILED;
+  auto mgr=context->GetCatalog();
   vector<string> index_col_names;
-  for(ptr=ptr->child_; ptr!=nullptr; ptr=ptr->next_) index_col_names.emplace_back(ptr->val_);
-  auto unis=table_info->table_meta_->uni_columns_;
-  for(auto& str: index_col_names){  //check uniqueness
-    if(find(unis.begin(), unis.end(), str)==unis.end()){
-      cout<<str<<"is not unique!"<<endl;
-      return DB_FAILED;
-    }
+  for(auto ptr=ast->child_->next_->next_->child_; ptr!=nullptr; ptr=ptr->next_){
+    index_col_names.emplace_back(ptr->val_);
   }
-  IndexInfo* index_info;
-  if(!db_eng->catalog_mgr_->CreateIndex(table_name, index_name, index_col_names, context->GetTransaction(), index_info, ""))
-    return DB_FAILED;
+  IndexInfo* index_info=IndexInfo::Create();
+  auto res=mgr->CreateIndex(table_name, index_name, index_col_names, context->GetTransaction(), index_info, "bptree");
+  if(res!=DB_SUCCESS) return res;
+  cout<<"Create index "<<index_name<<"success."<<endl;
   return DB_SUCCESS;
 }
 
@@ -463,21 +501,25 @@ dberr_t ExecuteEngine::ExecuteDropIndex(pSyntaxNode ast, ExecuteContext *context
   LOG(INFO) << "ExecuteDropIndex" << std::endl;
 #endif
   string index_name(ast->child_->val_);
-  auto db_eng=dbs_[current_db_];
+  auto mgr=context->GetCatalog();
   vector<TableInfo *> table_infos;
-  if(!db_eng->catalog_mgr_->GetTables(table_infos)) return DB_FAILED;
+  auto res=mgr->GetTables(table_infos);
+  if(res!=DB_SUCCESS) return res;
   for(auto& table_info: table_infos){
     vector<IndexInfo *> index_infos;
-    if(!db_eng->catalog_mgr_->GetTableIndexes(table_info->GetTableName(), index_infos)) return DB_FAILED;
+    auto res=mgr->GetTableIndexes(table_info->GetTableName(), index_infos);
+    if(res!=DB_SUCCESS) return res;
     // if(find(index_infos.begin(), index_infos.end(), index_name)!=index_infos.end()){  //found
-    //   if(!db_eng->catalog_mgr_->DropIndex(table_info->GetTableName(), index_name)) return DB_FAILED;
+    //   if(!mgr->DropIndex(table_info->GetTableName(), index_name)) return DB_FAILED;
     // }
     for(auto& index_info: index_infos){
       if(index_info->GetIndexName()==index_name){
-        if(!db_eng->catalog_mgr_->DropIndex(table_info->GetTableName(), index_name)) return DB_FAILED;
+        auto res=mgr->DropIndex(table_info->GetTableName(), index_name);
+        if(res!=DB_SUCCESS) return res;
       }
     }
   }
+  cout<<"Drop index"<<index_name<<"success."<<endl;
   return DB_SUCCESS;
 }
 

@@ -144,7 +144,8 @@ dberr_t CatalogManager::CreateTable(const string &table_name, TableSchema *schem
   next_table_id_=catalog_meta_->GetNextTableId(); //update next_table_id_
   table_meta->SerializeTo(page->GetData());
   buffer_pool_manager_->UnpinPage(page_id, true);
-  return DB_FAILED;
+  FlushCatalogMetaPage();
+  return DB_SUCCESS;
 }
 
 /**
@@ -201,6 +202,18 @@ dberr_t CatalogManager::CreateIndex(const std::string &table_name, const string 
   next_index_id_=catalog_meta_->GetNextIndexId(); //update next_index_id
   index_meta->SerializeTo(page->GetData());
   buffer_pool_manager_->UnpinPage(page_id, true);
+  
+  auto table_heap=table_info->GetTableHeap();
+  vector<Field> fields;
+  for(auto it=table_heap->Begin(txn); it!=table_heap->End(); it++){
+    fields.clear();
+    for(auto pos: key_map){
+      fields.emplace_back(*(it->GetField(pos)));
+    }
+    Row row{fields};
+    index_info->GetIndex()->InsertEntry(row, it->GetRowId(), txn);
+  }
+  FlushCatalogMetaPage();
   return DB_SUCCESS;
 }
 
@@ -251,6 +264,7 @@ dberr_t CatalogManager::DropTable(const string &table_name) {
   }
   index_map.clear();  //clear table_name's map on index_names_
   index_names_.erase(table_name);
+  FlushCatalogMetaPage();
   return DB_SUCCESS;
 }
 
@@ -267,6 +281,7 @@ dberr_t CatalogManager::DropIndex(const string &table_name, const string &index_
   catalog_meta_->index_meta_pages_.erase(index_id);
   index_map.erase(index_name);
   indexes_.erase(index_id);
+  FlushCatalogMetaPage();
   return DB_SUCCESS;
 }
 
@@ -297,6 +312,7 @@ dberr_t CatalogManager::LoadTable(const table_id_t table_id, const page_id_t pag
   catalog_meta_->table_meta_pages_[table_id]=page_id;
   table_names_[table_meta->GetTableName()]=table_id;
   tables_[table_id]=table_info;
+  buffer_pool_manager_->UnpinPage(page_id, false);
   return DB_SUCCESS;
 }
 
@@ -317,6 +333,7 @@ dberr_t CatalogManager::LoadIndex(const index_id_t index_id, const page_id_t pag
   auto table_name=tables_[index_meta->GetTableId()]->GetTableName();
   index_names_[table_name][index_meta->GetIndexName()]=index_id;
   indexes_[index_id]=index_info;
+  buffer_pool_manager_->UnpinPage(page_id, false);
   return DB_SUCCESS;
 }
 

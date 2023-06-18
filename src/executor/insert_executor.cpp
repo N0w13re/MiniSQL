@@ -18,12 +18,42 @@ void InsertExecutor::Init() {
 
 bool InsertExecutor::Next(Row *row, RowId *rid) {
   if(child_executor_->Next(row, rid)){
-    if(!table_info_->GetTableHeap()->InsertTuple(*row, exec_ctx_->GetTransaction())) return false;
+    // if(!table_info_->GetTableHeap()->InsertTuple(*row, exec_ctx_->GetTransaction())) return false;
     for(auto& index_info: indexes_){   //update all the indexes
-      Row key_row;
-      row->GetKeyFromRow(table_info_->GetSchema(), index_info->GetIndexKeySchema(), key_row); //get key_row of this index
-      index_info->GetIndex()->InsertEntry(key_row, *rid, exec_ctx_->GetTransaction()); //insert entry into this index
+      if(index_info->GetIndexName().find("Unique")!=-1){  //index for unique
+        auto pos=index_info->GetIndexKeySchema()->GetColumn(0)->GetTableInd();
+        auto field=row->GetField(pos);  //field of index
+        vector<Field> fields{Field{*field}};
+        Row key=Row{fields};  //construct temporary row
+        vector<RowId> res;
+        index_info->GetIndex()->ScanKey(key, res, exec_ctx_->GetTransaction(), "=");
+        if(res.size()){
+          cout<<"Already exists."<<endl;
+          return false;
+        }
+      }
+      if(index_info->GetIndexName().find("Primary")!=-1){ //index for primary
+        auto pos=index_info->GetIndexKeySchema()->GetColumn(0)->GetTableInd();
+        auto field=row->GetField(pos);
+        vector<Field> fields{Field{*field}};
+        Row key=Row{fields};
+        vector<RowId> res;
+        index_info->GetIndex()->ScanKey(key, res, exec_ctx_->GetTransaction(), "=");
+        if(res.size()){
+          cout<<"Already exists."<<endl;
+          return false;
+        }
+      }
     }
+    if(!table_info_->GetTableHeap()->InsertTuple(*row, exec_ctx_->GetTransaction())) return false;
+    for(auto& index_info: indexes_){
+      auto pos=index_info->GetIndexKeySchema()->GetColumn(0)->GetTableInd();
+      auto field=row->GetField(pos);  //field of index
+      vector<Field> fields{Field{*field}};
+      Row key=Row{fields};
+      index_info->GetIndex()->InsertEntry(key, row->GetRowId(), exec_ctx_->GetTransaction());
+    }
+    *rid=row->GetRowId();
     return true;
   }
   return false;
